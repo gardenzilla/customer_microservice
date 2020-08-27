@@ -31,17 +31,12 @@ impl CustomerService {
         }
     }
     async fn create_new_customer(&self, u: CreateNewRequest) -> ServiceResult<CustomerObj> {
-        let _address = if let Some(addr) = u.address {
-            customer::Address::new(addr.zip, addr.location, addr.address)
-        } else {
-            return Err(ServiceError::internal_error("Missing address from message"));
-        };
         let new_customer = customer::Customer::new(
             u.name,
             u.email,
             u.phone,
             TaxNumber::new(&u.tax_number)?,
-            _address,
+            customer::Address::new(u.zip, u.location, u.address),
             u.created_by,
         )?;
         let customer_obj: CustomerObj = (&new_customer).into();
