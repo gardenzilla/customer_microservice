@@ -41,6 +41,12 @@ impl std::fmt::Display for TaxNumber {
     }
 }
 
+impl Into<String> for TaxNumber {
+    fn into(self) -> String {
+        format!("{}", self)
+    }
+}
+
 impl TaxNumber {
     pub fn new(tax_number: &str) -> ServiceResult<Self> {
         // Create an own copy of the input string
