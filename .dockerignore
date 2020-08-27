@@ -1,4 +1,4 @@
 data/
 target/
-!target/release/user_microservice
+!target/release/customer_microservice
 Cargo.lock
