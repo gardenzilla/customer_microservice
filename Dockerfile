@@ -1,4 +1,4 @@
-FROM debian:buster-slim
+FROM ubuntu:latest
 WORKDIR /usr/local/bin
 # RUN strip ./target/release/user_microservice
 COPY ./target/release/customer_microservice /usr/local/bin/customer_microservice
