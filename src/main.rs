@@ -159,7 +159,7 @@ async fn main() -> prelude::ServiceResult<()> {
 
     let customer_service = CustomerService::new(customers, email_client);
 
-    let addr = "[::1]:50051".parse().unwrap();
+    let addr = "[::1]:50055".parse().unwrap();
 
     Server::builder()
         .add_service(CustomerServer::new(customer_service))
