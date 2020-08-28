@@ -29,7 +29,7 @@ pub struct Customer {
     name: String,
     email: String,
     phone: String,
-    tax_number: TaxNumber,
+    tax_number: Option<TaxNumber>,
     address: Address,
     date_created: DateTime<Utc>,
     created_by: String,
@@ -70,7 +70,7 @@ impl From<Customer> for CustomerObj {
             }),
             email: u.email,
             phone: u.phone,
-            tax_number: u.tax_number.into(),
+            tax_number: u.tax_number.unwrap_or_default().into(),
             has_user: u.has_user,
             users: u.users,
         }
@@ -79,6 +79,10 @@ impl From<Customer> for CustomerObj {
 
 impl From<&Customer> for CustomerObj {
     fn from(u: &Customer) -> Self {
+        let taxnumber: String = match &u.tax_number {
+            Some(number) => number.to_owned().into(),
+            None => "".into(),
+        };
         Self {
             id: u.id.to_owned(),
             date_created: Some(protos::prelude::DateTime {
@@ -93,7 +97,7 @@ impl From<&Customer> for CustomerObj {
             }),
             email: u.email.to_owned(),
             phone: u.phone.to_owned(),
-            tax_number: u.tax_number.to_owned().into(),
+            tax_number: taxnumber,
             has_user: u.has_user,
             users: u.users.to_owned(),
         }
@@ -107,7 +111,7 @@ impl Default for Customer {
             name: String::default(),
             email: String::default(),
             phone: String::default(),
-            tax_number: TaxNumber::default(),
+            tax_number: None,
             address: Address::default(),
             date_created: Utc::now(),
             created_by: String::default(),
@@ -132,7 +136,7 @@ impl Customer {
         name: String,
         email: String,
         phone: String,
-        tax_number: TaxNumber,
+        tax_number: Option<TaxNumber>,
         address: Address,
         created_by: String,
     ) -> ServiceResult<Self> {
@@ -193,10 +197,10 @@ impl Customer {
             ))
         }
     }
-    pub fn get_tax_number(&self) -> &TaxNumber {
+    pub fn get_tax_number(&self) -> &Option<TaxNumber> {
         &self.tax_number
     }
-    pub fn set_tax_number(&mut self, tax_number: TaxNumber) -> &Self {
+    pub fn set_tax_number(&mut self, tax_number: Option<TaxNumber>) -> &Self {
         self.tax_number = tax_number;
         self
     }

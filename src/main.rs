@@ -31,11 +31,15 @@ impl CustomerService {
         }
     }
     async fn create_new_customer(&self, u: CreateNewRequest) -> ServiceResult<CustomerObj> {
+        let taxnumber = match u.tax_number.len() {
+            x if x > 0 => Some(TaxNumber::new(&u.tax_number)?),
+            _ => None,
+        };
         let new_customer = customer::Customer::new(
             u.name,
             u.email,
             u.phone,
-            TaxNumber::new(&u.tax_number)?,
+            taxnumber,
             customer::Address::new(u.zip, u.location, u.address),
             u.created_by,
         )?;
@@ -97,6 +101,10 @@ impl Customer for CustomerService {
             Some(u) => u,
             None => return Err(Status::internal("Request has an empty customer object")),
         };
+        let taxnumber = match _customer.tax_number.len() {
+            x if x > 0 => Some(TaxNumber::new(&_customer.tax_number)?),
+            _ => None,
+        };
         let _address = if let Some(addr) = _customer.address {
             customer::Address::new(addr.zip, addr.location, addr.address)
         } else {
@@ -114,7 +122,7 @@ impl Customer for CustomerService {
             _customer_mut.set_name(_customer.name.to_string());
             _customer_mut.set_email(_customer.email.to_string())?;
             _customer_mut.set_phone(_customer.phone.to_string());
-            _customer_mut.set_tax_number(TaxNumber::new(&_customer.tax_number)?);
+            _customer_mut.set_tax_number(taxnumber);
             _customer_mut.set_address(_address);
         }
 
