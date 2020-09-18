@@ -25,7 +25,6 @@ use prelude::*;
 use protos::customer::customer_server::*;
 use protos::customer::*;
 use protos::email::email_client::*;
-use std::collections::HashMap;
 use std::path::PathBuf;
 use taxnumber::*;
 use tokio::sync::{oneshot, Mutex};
@@ -44,13 +43,10 @@ use tonic::{transport::Server, Request, Response, Status};
 //
 // Other restrictions
 // ==================
-// Customer ids and aliases are also restricted
-// to update. They auto generated with the customer
+// Customer ids are auto generated with the customer
 // object, and they remain the same in the future
 
 pub struct CustomerService {
-  next_id: Mutex<u32>,                           // Store next available customer ID
-  lookup_table: Mutex<HashMap<String, u32>>,     // Lookup customer id by alias
   customers: Mutex<VecPack<customer::Customer>>, // Customers db
   _email_client: Mutex<EmailClient<Channel>>,    // Email service client
 }
@@ -63,42 +59,7 @@ impl CustomerService {
     customers: VecPack<customer::Customer>, // Customers db
     email_client: EmailClient<Channel>,     // Email service client
   ) -> CustomerService {
-    // Define the next id
-    // Iterate over the customers
-    // and fold till the biggest id
-    let next_id: u32 = customers.iter().fold(0u32, |prev_id, c| {
-      let id = c.unpack().get_id();
-      if *id > prev_id {
-        // return the current id as
-        // that bigger then the previous one
-        *id
-      } else {
-        // return the previous id
-        prev_id
-      }
-    }) + 1; // biggest found ID + 1 is the next ID
-
-    // Lookup table to store
-    // customer aliases
-    // Store customer alias and customer id
-    //                =====              ==
-    let mut lookup: HashMap<String, u32> = HashMap::new();
-
-    // Build up lookup table
-    // for aliases
-    customers
-      .iter()
-      .map(|c| {
-        let c = c.unpack();
-        (c.get_alias().to_string(), *c.get_id())
-      })
-      .for_each(|o| {
-        let _ = lookup.insert(o.0, o.1);
-      });
-
     CustomerService {
-      next_id: Mutex::new(next_id),
-      lookup_table: Mutex::new(lookup),
       customers: Mutex::new(customers),
       _email_client: Mutex::new(email_client),
     }
@@ -111,22 +72,18 @@ impl CustomerService {
       _ => None,
     };
 
-    let mut alias: String;
+    let mut id: String;
 
-    // Generate customer alias
-    // Using a loop, generate random IDs till
-    // we find an available ID
     loop {
-      alias = id::generate_alphanumeric(7);
-      if self.is_alias_available(&alias).await {
+      id = id::generate_alphanumeric(7); // e.g.: 4rf6r7f
+      if self.is_id_available(&id).await {
         break;
       }
     }
 
     // Create customer object
     let new_customer = customer::Customer::new(
-      *self.next_id.lock().await, // Get next free ID
-      alias,                      // Generate auto alias
+      id,
       u.name,
       u.email,
       u.phone,
@@ -134,9 +91,6 @@ impl CustomerService {
       customer::Address::new(u.zip, u.location, u.address),
       u.created_by,
     )?;
-
-    // Increment next ID
-    *self.next_id.lock().await += 1;
 
     let customer_obj: CustomerObj = (&new_customer).into();
 
@@ -147,10 +101,10 @@ impl CustomerService {
     Ok(customer_obj)
   }
 
-  // Check wheter an alias is available
+  // Check wheter an id is available
   // or already taken
-  async fn is_alias_available(&self, alias: &str) -> bool {
-    self.lookup_table.lock().await.get(alias).is_some()
+  async fn is_id_available(&self, id: &str) -> bool {
+    !self.customers.lock().await.find_id(&id).is_ok()
   }
 }
 
@@ -252,13 +206,6 @@ impl Customer for CustomerService {
     &self,
     _request: Request<RemoveUserRequest>,
   ) -> Result<Response<RemoveUserResponse>, Status> {
-    todo!()
-  }
-
-  async fn lookup(
-    &self,
-    _request: Request<LookupRequest>,
-  ) -> Result<Response<LookupResponse>, Status> {
     todo!()
   }
 }

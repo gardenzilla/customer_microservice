@@ -25,17 +25,16 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Customer {
-  id: u32,
-  alias: String,
+  id: String,
   name: String,
   email: String,
   phone: String,
   tax_number: Option<TaxNumber>,
   address: Address,
-  date_created: i64,
-  created_by: u32,
+  date_created: DateTime<Utc>,
+  created_by: String,
   has_user: bool,
-  users: Vec<u32>,
+  users: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -59,7 +58,7 @@ impl From<Customer> for CustomerObj {
   fn from(u: Customer) -> Self {
     Self {
       id: u.id,
-      date_created: u.date_created,
+      date_created: u.date_created.to_rfc3339(),
       created_by: u.created_by,
       name: u.name,
       address: Some(protos::customer::Address {
@@ -83,9 +82,9 @@ impl From<&Customer> for CustomerObj {
       None => "".into(),
     };
     Self {
-      id: u.id,
-      date_created: u.date_created,
-      created_by: u.created_by,
+      id: u.id.to_owned(),
+      date_created: u.date_created.to_rfc3339(),
+      created_by: u.created_by.to_owned(),
       name: u.name.to_owned(),
       address: Some(protos::customer::Address {
         zip: u.address.zip.to_owned(),
@@ -104,15 +103,14 @@ impl From<&Customer> for CustomerObj {
 impl Default for Customer {
   fn default() -> Self {
     Self {
-      id: 0,
-      alias: String::default(),
+      id: String::default(),
       name: String::default(),
       email: String::default(),
       phone: String::default(),
       tax_number: None,
       address: Address::default(),
-      date_created: Utc::now().timestamp_millis(),
-      created_by: 0,
+      date_created: Utc::now(),
+      created_by: String::default(),
       has_user: false,
       users: Vec::new(),
     }
@@ -131,14 +129,13 @@ impl TryFrom for Customer {
 
 impl Customer {
   pub fn new(
-    id: u32,
-    alias: String,
+    id: String,
     name: String,
     email: String,
     phone: String,
     tax_number: Option<TaxNumber>,
     address: Address,
-    created_by: u32,
+    created_by: String,
   ) -> ServiceResult<Self> {
     // Validate Email content
     if !email.contains('@') || !email.contains('.') {
@@ -156,13 +153,12 @@ impl Customer {
 
     Ok(Self {
       id,
-      alias,
       name,
       email,
       phone,
       tax_number,
       address,
-      date_created: Utc::now().timestamp_millis(),
+      date_created: Utc::now(),
       created_by,
       has_user: false,
       users: Vec::new(),
@@ -171,13 +167,10 @@ impl Customer {
 }
 
 impl Customer {
-  pub fn get_id(&self) -> &u32 {
+  pub fn get_id(&self) -> &str {
     &self.id
   }
-  pub fn get_alias(&self) -> &str {
-    &self.alias
-  }
-  pub fn get_date_created(&self) -> i64 {
+  pub fn get_date_created(&self) -> DateTime<Utc> {
     self.date_created
   }
   pub fn get_name(&self) -> &str {
@@ -222,17 +215,17 @@ impl Customer {
     self.phone = phone;
     self
   }
-  pub fn get_created_by(&self) -> u32 {
-    self.created_by
+  pub fn get_created_by(&self) -> &str {
+    &self.created_by
   }
-  pub fn get_users(&self) -> &Vec<u32> {
+  pub fn get_users(&self) -> &Vec<String> {
     &self.users
   }
 }
 
 impl VecPackMember for Customer {
-  type Out = u32;
-  fn get_id(&self) -> &u32 {
+  type Out = str;
+  fn get_id(&self) -> &str {
     &self.id
   }
   // fn try_from(from: &str) -> StorageResult<Self::ResultType> {
