@@ -29,12 +29,12 @@ pub struct Customer {
   name: String,
   email: String,
   phone: String,
-  tax_number: Option<TaxNumber>,
-  address: Address,
+  tax_number: Option<TaxNumber>, // Should be valid taxnumber
+  address: Address,              // Invoice address
   date_created: DateTime<Utc>,
   created_by: String,
   has_user: bool,
-  users: Vec<String>,
+  users: Vec<String>, // Related users
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
