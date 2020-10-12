@@ -138,11 +138,15 @@ impl Customer {
     created_by: String,
   ) -> ServiceResult<Self> {
     // Validate Email content
-    if !email.contains('@') || !email.contains('.') {
-      return Err(BadRequest(
-        "Nem megfelelő email cím. Legalább @ jelet és pontot kell tartalmaznia".to_string(),
-      ));
+    if email.len() > 0 {
+      // If there is any provided email text
+      if !email.contains('@') || !email.contains('.') {
+        return Err(BadRequest(
+          "Nem megfelelő email cím. Legalább @ jelet és pontot kell tartalmaznia".to_string(),
+        ));
+      }
     }
+
     // Validate Name length
     if name.len() > 200 || name.len() < 2 {
       return Err(BadRequest(format!(
@@ -184,15 +188,18 @@ impl Customer {
     &self.email
   }
   pub fn set_email(&mut self, email: String) -> ServiceResult<&Self> {
-    if email.contains('@') && email.contains('.') && email.len() > 5 {
-      self.email = email;
-      Ok(self)
-    } else {
-      Err(BadRequest(
-        "Rossz email formátum. Legyen legalább 5 karakter, és tartalmazzon @ jelet és pontot"
-          .into(),
-      ))
+    if email.len() > 0 {
+      if email.contains('@') && email.contains('.') && email.len() > 5 {
+        self.email = email;
+        return Ok(self);
+      } else {
+        return Err(BadRequest(
+          "Rossz email formátum. Legyen legalább 5 karakter, és tartalmazzon @ jelet és pontot"
+            .into(),
+        ));
+      }
     }
+    Ok(self)
   }
   pub fn get_tax_number(&self) -> &Option<TaxNumber> {
     &self.tax_number
