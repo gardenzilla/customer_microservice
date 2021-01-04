@@ -60,6 +60,7 @@ impl TaxNumber {
                 "Formai hiba! Az adószám 11 db számot kell, hogy tartalmazzon.",
             )));
         }
+        // Slice!
         let slice: [u32; 8] = [s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7]];
         let result: TaxNumber = Self([
             s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7], s[8], s[9], s[10],
