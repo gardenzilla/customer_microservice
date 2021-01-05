@@ -15,20 +15,17 @@
 // You should have received a copy of the GNU General Public License
 // along with Gardenzilla.  If not, see <http://www.gnu.org/licenses/>.
 
-pub mod customer;
-pub mod id;
-pub mod prelude;
-pub mod taxnumber;
+mod customer;
+mod prelude;
+mod taxnumber;
 
+use gzlib::proto::customer::customer_server::*;
+use gzlib::proto::customer::*;
 use packman::*;
 use prelude::*;
-use protos::customer::customer_server::*;
-use protos::customer::*;
-use protos::email::email_client::*;
 use std::path::PathBuf;
 use taxnumber::*;
 use tokio::sync::{oneshot, Mutex};
-use tonic::transport::Channel;
 use tonic::{transport::Server, Request, Response, Status};
 
 // Customer service
@@ -40,71 +37,133 @@ use tonic::{transport::Server, Request, Response, Status};
 // =========
 // As customer has a key role systemwide,
 // we cannot remove a customer object anyway.
-//
-// Other restrictions
-// ==================
-// Customer ids are auto generated with the customer
-// object, and they remain the same in the future
-
-pub struct CustomerService {
+struct CustomerService {
   customers: Mutex<VecPack<customer::Customer>>, // Customers db
-  _email_client: Mutex<EmailClient<Channel>>,    // Email service client
 }
 
 // Init customer service
 // Load database, load related service clients
 // set alias lookup table and next id
 impl CustomerService {
-  fn init(
-    customers: VecPack<customer::Customer>, // Customers db
-    email_client: EmailClient<Channel>,     // Email service client
+  // Init CustomerService
+  fn init(customers: VecPack<customer::Customer>, // Customers db
   ) -> CustomerService {
     CustomerService {
       customers: Mutex::new(customers),
-      _email_client: Mutex::new(email_client),
     }
   }
-
-  async fn create_new_customer(&self, u: CreateNewRequest) -> ServiceResult<CustomerObj> {
+  // Get next customer ID
+  async fn next_customer_id(&self) -> u32 {
+    let mut latest_id: u32 = 0;
+    self.customers.lock().await.iter().for_each(|customer| {
+      let id: u32 = *customer.unpack().get_id();
+      if id > latest_id {
+        latest_id = id;
+      }
+    });
+    latest_id + 1
+  }
+  // Create new customer
+  async fn create_new(&self, u: NewCustomerObj) -> ServiceResult<CustomerObj> {
     // Check taxnumber
     let taxnumber = match u.tax_number.len() {
       x if x > 0 => Some(TaxNumber::new(&u.tax_number)?),
       _ => None,
     };
-
-    let mut id: String;
-
-    loop {
-      id = id::generate_alphanumeric(7); // e.g.: 4rf6r7f
-      if self.is_id_available(&id).await {
-        break;
-      }
-    }
+    // Get the next customer ID
+    let next_customer_id = self.next_customer_id().await;
 
     // Create customer object
     let new_customer = customer::Customer::new(
-      id,
+      next_customer_id,
       u.name,
       u.email,
       u.phone,
       taxnumber,
-      customer::Address::new(u.zip, u.location, u.address),
+      u.address_zip,
+      u.address_location,
+      u.address_street,
       u.created_by,
     )?;
 
-    let customer_obj: CustomerObj = (&new_customer).into();
-
-    // Store new customer in DB
-    self.customers.lock().await.insert(new_customer)?;
+    // Store new customer into storage
+    self.customers.lock().await.insert(new_customer.clone())?;
 
     // Returns customer proto object
-    Ok(customer_obj)
+    Ok(new_customer.into())
   }
-
-  // Check wheter an id is available
-  // or already taken
-  async fn is_id_available(&self, id: &str) -> bool {
-    !self.customers.lock().await.find_id(&id).is_ok()
+  // Get all customer IDs
+  async fn get_all(&self) -> ServiceResult<Vec<u32>> {
+    let res = self
+      .customers
+      .lock()
+      .await
+      .iter()
+      .map(|c| c.unpack().id)
+      .collect::<Vec<u32>>();
+    Ok(res)
+  }
+  // Get customer by ID
+  async fn get_by_id(&self, r: GetByIdRequest) -> ServiceResult<CustomerObj> {
+    let res = self
+      .customers
+      .lock()
+      .await
+      .find_id(&r.customer_id)?
+      .unpack()
+      .clone();
+    Ok(res.into())
+  }
+  // Get customers in bulk
+  async fn get_bulk(&self, r: GetBulkRequest) -> ServiceResult<Vec<CustomerObj>> {
+    let res = self
+      .customers
+      .lock()
+      .await
+      .iter()
+      .filter(|c| r.customer_ids.contains(&c.unpack().id))
+      .map(|c| c.unpack().clone().into())
+      .collect::<Vec<CustomerObj>>();
+    Ok(res)
+  }
+  // Update customer by ID
+  async fn update_by_id(&self, r: CustomerObj) -> ServiceResult<CustomerObj> {
+    // Check taxnumber
+    let taxnumber = match r.tax_number.len() {
+      x if x > 0 => Some(TaxNumber::new(&r.tax_number)?),
+      _ => None,
+    };
+    // Update customer
+    let res = self
+      .customers
+      .lock()
+      .await
+      .find_id_mut(&r.id)?
+      .as_mut()
+      .unpack()
+      .update(
+        r.name,
+        r.email,
+        r.phone,
+        taxnumber,
+        r.address_zip,
+        r.address_location,
+        r.address_street,
+      )?
+      .clone();
+    Ok(res.into())
+  }
+  // Find customers by query
+  async fn find_customer(&self, r: FindCustomerRequest) -> ServiceResult<Vec<u32>> {
+    let res = self
+      .customers
+      .lock()
+      .await
+      .iter()
+      .filter(|c| c.unpack().name.contains(&r.query))
+      .map(|c| c.unpack().id)
+      .collect::<Vec<u32>>();
+    Ok(res)
   }
 }
 
@@ -112,118 +171,73 @@ impl CustomerService {
 impl Customer for CustomerService {
   async fn create_new(
     &self,
-    request: Request<CreateNewRequest>,
-  ) -> Result<Response<CreateNewResponse>, Status> {
-    let resp = self.create_new_customer(request.into_inner()).await?;
-    Ok(Response::new(CreateNewResponse {
-      customer: Some(resp),
-    }))
+    request: Request<NewCustomerObj>,
+  ) -> Result<Response<CustomerObj>, Status> {
+    let resp = self.create_new(request.into_inner()).await?;
+    Ok(Response::new(resp))
   }
 
-  // Todo!: this should be a response stream
-  //                        !===============
-  async fn get_all(&self, _request: Request<()>) -> Result<Response<GetAllResponse>, Status> {
-    let customers = self
-      .customers
-      .lock()
-      .await
-      .into_iter()
-      .map(|i: &mut Pack<customer::Customer>| i.unpack().into())
-      .collect::<Vec<CustomerObj>>();
-    let response = GetAllResponse {
-      customers: customers,
-    };
-    return Ok(Response::new(response));
+  async fn get_all(&self, _request: Request<()>) -> Result<Response<CustomerIds>, Status> {
+    let res = self.get_all().await?;
+    Ok(Response::new(CustomerIds { customer_ids: res }))
   }
 
   async fn get_by_id(
     &self,
     request: Request<GetByIdRequest>,
-  ) -> Result<Response<GetByIdResponse>, Status> {
-    let customer: CustomerObj = self
-      .customers
-      .lock()
-      .await
-      .find_id(&request.into_inner().customer_id)
-      .map_err(|_| Status::not_found("Customer not found"))?
-      .unpack()
-      .into();
-    let response = GetByIdResponse {
-      customer: Some(customer),
-    };
-    return Ok(Response::new(response));
+  ) -> Result<Response<CustomerObj>, Status> {
+    let res = self.get_by_id(request.into_inner()).await?;
+    Ok(Response::new(res))
+  }
+
+  type GetBulkStream = tokio::sync::mpsc::Receiver<Result<CustomerObj, Status>>;
+
+  async fn get_bulk(
+    &self,
+    request: Request<GetBulkRequest>,
+  ) -> Result<Response<Self::GetBulkStream>, Status> {
+    // Create channel for stream response
+    let (mut tx, rx) = tokio::sync::mpsc::channel(100);
+
+    // Get resources as Vec<SourceObject>
+    let res = self.get_bulk(request.into_inner()).await?;
+
+    // Send the result items through the channel
+    for sobject in res {
+      tx.send(Ok(sobject))
+        .await
+        .map_err(|_| Status::internal("Error while sending sources over channel"))?;
+    }
+
+    // Send back the receiver
+    Ok(Response::new(rx))
   }
 
   async fn update_by_id(
     &self,
-    request: Request<UpdateByIdRequest>,
-  ) -> Result<Response<UpdateByIdResponse>, Status> {
-    let _customer: CustomerUpdateObj = match request.into_inner().customer {
-      Some(u) => u,
-      None => return Err(Status::internal("Request has an empty customer object")),
-    };
-    let taxnumber = match _customer.tax_number.len() {
-      x if x > 0 => Some(TaxNumber::new(&_customer.tax_number)?),
-      _ => None,
-    };
-    let _address = if let Some(addr) = _customer.address {
-      customer::Address::new(addr.zip, addr.location, addr.address)
-    } else {
-      return Err(ServiceError::internal_error("Missing address from message").into());
-    };
-    let mut lock = self.customers.lock().await;
-    let customer = match lock.find_id_mut(&_customer.id) {
-      Ok(u) => u,
-      Err(err) => return Err(Status::not_found(format!("{}", err))),
-    };
-
-    {
-      let mut customer_mut = customer.as_mut();
-      let mut _customer_mut = customer_mut.unpack();
-      _customer_mut.set_name(_customer.name.to_string());
-      _customer_mut.set_email(_customer.email.to_string())?;
-      _customer_mut.set_phone(_customer.phone.to_string());
-      _customer_mut.set_tax_number(taxnumber);
-      _customer_mut.set_address(_address);
-    }
-
-    let _customer = customer.unpack();
-
-    let response = UpdateByIdResponse {
-      customer: Some(_customer.into()),
-    };
-    return Ok(Response::new(response));
+    request: Request<CustomerObj>,
+  ) -> Result<Response<CustomerObj>, Status> {
+    let res = self.update_by_id(request.into_inner()).await?;
+    Ok(Response::new(res))
   }
 
-  async fn add_user(
+  async fn find_customer(
     &self,
-    _request: Request<AddUserRequest>,
-  ) -> Result<Response<AddUserResponse>, Status> {
-    todo!()
-  }
-
-  async fn remove_user(
-    &self,
-    _request: Request<RemoveUserRequest>,
-  ) -> Result<Response<RemoveUserResponse>, Status> {
-    todo!()
+    request: Request<FindCustomerRequest>,
+  ) -> Result<Response<CustomerIds>, Status> {
+    let res = self.find_customer(request.into_inner()).await?;
+    Ok(Response::new(CustomerIds { customer_ids: res }))
   }
 }
 
 #[tokio::main]
 async fn main() -> prelude::ServiceResult<()> {
   // Load customers db
-  let customers: VecPack<customer::Customer> =
-    VecPack::try_load_or_init(PathBuf::from("data/customers"))
-      .expect("Error while loading customers storage");
-
-  // Connect to email service
-  let email_client = EmailClient::connect("http://[::1]:50053")
-    .await
-    .expect("Error while connecting to email service");
+  let db: VecPack<customer::Customer> = VecPack::try_load_or_init(PathBuf::from("data/customers"))
+    .expect("Error while loading customers storage");
 
   // Init customer service
-  let customer_service = CustomerService::init(customers, email_client);
+  let customer_service = CustomerService::init(db);
 
   let addr = "[::1]:50055".parse().unwrap();
 

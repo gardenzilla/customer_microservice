@@ -20,99 +20,35 @@ use crate::prelude::*;
 use crate::taxnumber::*;
 use chrono::prelude::*;
 use packman::*;
-use protos::customer::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Customer {
-  id: String,
-  name: String,
-  email: String,
-  phone: String,
-  tax_number: Option<TaxNumber>, // Should be valid taxnumber
-  address: Address,              // Invoice address
-  date_created: DateTime<Utc>,
-  created_by: String,
-  has_user: bool,
-  users: Vec<String>, // Related users
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, Default)]
-pub struct Address {
-  zip: String,
-  location: String,
-  address: String,
-}
-
-impl Address {
-  pub fn new(zip: String, location: String, address: String) -> Self {
-    Self {
-      zip,
-      location,
-      address,
-    }
-  }
-}
-
-impl From<Customer> for CustomerObj {
-  fn from(u: Customer) -> Self {
-    Self {
-      id: u.id,
-      date_created: u.date_created.to_rfc3339(),
-      created_by: u.created_by,
-      name: u.name,
-      address: Some(protos::customer::Address {
-        zip: u.address.zip,
-        location: u.address.location,
-        address: u.address.address,
-      }),
-      email: u.email,
-      phone: u.phone,
-      tax_number: u.tax_number.unwrap_or_default().into(),
-      has_user: u.has_user,
-      users: u.users,
-    }
-  }
-}
-
-impl From<&Customer> for CustomerObj {
-  fn from(u: &Customer) -> Self {
-    let taxnumber: String = match &u.tax_number {
-      Some(number) => number.to_owned().into(),
-      None => "".into(),
-    };
-    Self {
-      id: u.id.to_owned(),
-      date_created: u.date_created.to_rfc3339(),
-      created_by: u.created_by.to_owned(),
-      name: u.name.to_owned(),
-      address: Some(protos::customer::Address {
-        zip: u.address.zip.to_owned(),
-        location: u.address.location.to_owned(),
-        address: u.address.address.to_owned(),
-      }),
-      email: u.email.to_owned(),
-      phone: u.phone.to_owned(),
-      tax_number: taxnumber,
-      has_user: u.has_user,
-      users: u.users.to_owned(),
-    }
-  }
+  pub id: u32,
+  pub name: String,
+  pub email: String,
+  pub phone: String,
+  pub tax_number: Option<TaxNumber>,
+  pub address_zip: String,
+  pub address_location: String,
+  pub address_street: String,
+  pub date_created: DateTime<Utc>,
+  pub created_by: u32,
 }
 
 impl Default for Customer {
   fn default() -> Self {
     Self {
-      id: String::default(),
+      id: 0,
       name: String::default(),
       email: String::default(),
       phone: String::default(),
       tax_number: None,
-      address: Address::default(),
+      address_zip: String::default(),
+      address_location: String::default(),
+      address_street: String::default(),
       date_created: Utc::now(),
-      created_by: String::default(),
-      has_user: false,
-      users: Vec::new(),
+      created_by: 0,
     }
   }
 }
@@ -121,21 +57,17 @@ impl TryFrom for Customer {
   type TryFrom = Customer;
 }
 
-// impl DateCreated for User {
-//     fn get_date_created(&self) -> DateTime<Utc> {
-//         self.date_created
-//     }
-// }
-
 impl Customer {
   pub fn new(
-    id: String,
+    id: u32,
     name: String,
     email: String,
     phone: String,
     tax_number: Option<TaxNumber>,
-    address: Address,
-    created_by: String,
+    address_zip: String,
+    address_location: String,
+    address_street: String,
+    created_by: u32,
   ) -> ServiceResult<Self> {
     // Validate Email content
     if email.len() > 0 {
@@ -161,31 +93,34 @@ impl Customer {
       email,
       phone,
       tax_number,
-      address,
+      address_zip,
+      address_location,
+      address_street,
       date_created: Utc::now(),
       created_by,
-      has_user: false,
-      users: Vec::new(),
     })
   }
 }
 
 impl Customer {
-  pub fn get_id(&self) -> &str {
-    &self.id
-  }
-  pub fn get_date_created(&self) -> DateTime<Utc> {
-    self.date_created
-  }
-  pub fn get_name(&self) -> &str {
-    &self.name
-  }
-  pub fn set_name(&mut self, name: String) -> &Self {
+  pub fn update(
+    &mut self,
+    name: String,
+    email: String,
+    phone: String,
+    tax_number: Option<TaxNumber>,
+    address_zip: String,
+    address_location: String,
+    address_street: String,
+  ) -> ServiceResult<&Self> {
+    self.set_email(email)?;
     self.name = name;
-    self
-  }
-  pub fn get_email(&self) -> &str {
-    &self.email
+    self.phone = phone;
+    self.tax_number = tax_number;
+    self.address_zip = address_zip;
+    self.address_location = address_location;
+    self.address_street = address_street;
+    Ok(self)
   }
   pub fn set_email(&mut self, email: String) -> ServiceResult<&Self> {
     if email.len() > 0 {
@@ -201,44 +136,11 @@ impl Customer {
     }
     Ok(self)
   }
-  pub fn get_tax_number(&self) -> &Option<TaxNumber> {
-    &self.tax_number
-  }
-  pub fn set_tax_number(&mut self, tax_number: Option<TaxNumber>) -> &Self {
-    self.tax_number = tax_number;
-    self
-  }
-  pub fn get_address(&self) -> &Address {
-    &self.address
-  }
-  pub fn set_address(&mut self, address: Address) -> &Self {
-    self.address = address;
-    self
-  }
-  pub fn get_phone(&self) -> &str {
-    &self.phone
-  }
-  pub fn set_phone(&mut self, phone: String) -> &Self {
-    self.phone = phone;
-    self
-  }
-  pub fn get_created_by(&self) -> &str {
-    &self.created_by
-  }
-  pub fn get_users(&self) -> &Vec<String> {
-    &self.users
-  }
 }
 
 impl VecPackMember for Customer {
-  type Out = str;
-  fn get_id(&self) -> &str {
+  type Out = u32;
+  fn get_id(&self) -> &Self::Out {
     &self.id
   }
-  // fn try_from(from: &str) -> StorageResult<Self::ResultType> {
-  //     match deserialize_object(from) {
-  //         Ok(res) => Ok(res),
-  //         Err(_) => Err(ServiceError::DeserializeServiceError("user has wrong format".to_string())),
-  //     }
-  // }
 }
