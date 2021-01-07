@@ -84,7 +84,10 @@ impl From<Customer> for CustomerObj {
       address_street: u.address_street,
       email: u.email,
       phone: u.phone,
-      tax_number: u.tax_number.unwrap_or_default().into(),
+      tax_number: match u.tax_number {
+        Some(tax_number) => tax_number.to_string(),
+        None => "".to_string(),
+      },
     }
   }
 }
