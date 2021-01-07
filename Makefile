@@ -5,7 +5,6 @@ export $(shell sed 's/=.*//' ../ENV.list)
 
 release:
 	cargo update
-	cargo test
 	cargo build --release
 	strip target/release/customer_microservice
 
