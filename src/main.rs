@@ -160,7 +160,7 @@ impl CustomerService {
       .lock()
       .await
       .iter()
-      .filter(|c| c.unpack().name.contains(&r.query))
+      .filter(|c| c.unpack().name.to_lowercase().contains(&r.query))
       .map(|c| c.unpack().id)
       .collect::<Vec<u32>>();
     Ok(res)
