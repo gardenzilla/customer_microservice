@@ -203,11 +203,11 @@ impl Customer for CustomerService {
     let res = self.get_bulk(request.into_inner()).await?;
 
     // Send the result items through the channel
-    for sobject in res {
-      tx.send(Ok(sobject))
-        .await
-        .map_err(|_| Status::internal("Error while sending sources over channel"))?;
-    }
+    tokio::spawn(async move {
+      for ots in res.into_iter() {
+        tx.send(Ok(ots)).await.unwrap();
+      }
+    });
 
     // Send back the receiver
     Ok(Response::new(rx))
