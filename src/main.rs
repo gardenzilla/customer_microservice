@@ -26,6 +26,7 @@ use prelude::*;
 use std::path::PathBuf;
 use taxnumber::*;
 use tokio::sync::{oneshot, Mutex};
+use tokio_stream::wrappers::ReceiverStream;
 use tonic::{transport::Server, Request, Response, Status};
 
 // Customer service
@@ -190,7 +191,7 @@ impl Customer for CustomerService {
     Ok(Response::new(res))
   }
 
-  type GetBulkStream = tokio::sync::mpsc::Receiver<Result<CustomerObj, Status>>;
+  type GetBulkStream = ReceiverStream<Result<CustomerObj, Status>>;
 
   async fn get_bulk(
     &self,
@@ -210,7 +211,7 @@ impl Customer for CustomerService {
     });
 
     // Send back the receiver
-    Ok(Response::new(rx))
+    Ok(Response::new(ReceiverStream::new(rx)))
   }
 
   async fn update_by_id(
